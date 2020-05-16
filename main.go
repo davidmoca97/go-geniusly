@@ -28,10 +28,10 @@ func main() {
 	flag.Parse()
 
 	if URL == "" {
-		hadleErr("The URL of the song was not provided")
+		handleErr("The URL of the song was not provided")
 	}
 	if _, err := url.ParseRequestURI(URL); err != nil {
-		hadleErr("The parameter provided is not a URL")
+		handleErr("The parameter provided is not a URL")
 	}
 
 	// // To compute the time that the program took to do all
@@ -40,52 +40,69 @@ func main() {
 	// Make the GET request
 	request, err := http.Get(URL)
 	if err != nil {
-		hadleErr("Error in the request: \n%v", err)
+		handleErr("Error in the request: \n%v", err)
 	}
 	defer request.Body.Close()
 
 	// Read and save the body of the response after being executed
 	body, _ := ioutil.ReadAll(request.Body)
 	if request.StatusCode != http.StatusOK {
-		hadleErr("The page does not exist")
+		handleErr("The page does not exist")
 	}
 
 	// Parse the HTML of the response to an HTML node
 	HTML, err := html.Parse(strings.NewReader(string(body)))
 	if err != nil {
-		hadleErr("Error parsing the HTML of the genius page: \n%v", err)
+		handleErr("Error parsing the HTML of the genius page: \n%v", err)
 	}
 
-	// This is the node we're looking for
+	// These are the nodes we're looking for
 	// << This node has the lyrics inside a <p> tag >>
-	NodeWeLookFor := html.Node{
-		Type: html.ElementNode,
-		Data: "div",
-		Attr: []html.Attribute{
-			{
-				Key: "class",
-				Val: "lyrics",
+	NodesWeLookFor := []html.Node{
+		{ // Node that contains the lyrics in V1
+			Type: html.ElementNode,
+			Data: "div",
+			Attr: []html.Attribute{
+				{
+					Key: "class",
+					Val: "lyrics",
+				},
+			},
+		},
+		{ // Node that contains the lyrics in V2
+			Type: html.ElementNode,
+			Data: "div",
+			Attr: []html.Attribute{
+				{
+					Key: "class",
+					Val: "SongPage__Section-sc-19xhmoi-3 cXvCRB",
+				},
 			},
 		},
 	}
 
-	// Get the node that has the lyrics
-	lyricsDiv, err := LookForANode(HTML, &NodeWeLookFor)
-	if err != nil {
-		hadleErr("Could not get the Lyrics node: \n%v", err)
+	var lyricsDiv *html.Node
+	for idx, nodeWeWant := range NodesWeLookFor {
+		// Get the node that has the lyrics
+		lyricsDiv, err = LookForANode(HTML, &nodeWeWant)
+		if err != nil && idx == len(NodesWeLookFor) {
+			handleErr("Could not get the Lyrics node: \n%v", err)
+		} else if err == nil {
+			break
+		}
 	}
 
 	// Get the lyrics
 	lyricsString, err := getLyrics(lyricsDiv)
 	if err != nil {
-		hadleErr("Could not retrieve the lyrics from the HTML: \n%v", err)
+		handleErr("Could not retrieve the lyrics from the HTML: \n%v", err)
 	}
 
 	if output != "" {
 		// Write the lyrics on a txt file
 		err = ioutil.WriteFile(path.Clean(output), []byte(lyricsString), 0777)
 		if err != nil {
-			hadleErr("Could not write in file: \n%v", err)
+			handleErr("Could not write in file: \n%v", err)
 		}
 	} else {
 		fmt.Println(lyricsString)
@@ -101,14 +118,15 @@ func main() {
 func LookForANode(n, o *html.Node) (*html.Node, error) {
 	// Node to return
 	var b *html.Node
-	var seekFunc func(*html.Node)
+	var stop bool
+	var seekFunc func(*html.Node, bool)
 
 	// Func that looks for the node
-	seekFunc = func(n *html.Node) {
+	seekFunc = func(n *html.Node, stopAtFirstMatch bool) {
 		// If the current node equals with both data and type
 		if n.Data == o.Data && n.Type == o.Type {
 			var numAttrsInNode int
-			// Loop over the attr and find out if they equal with the wanted attrs
+			// Loop over the attr and find if they are equal with the wanted attrs
 			for _, attr := range o.Attr {
 				if hasAttr(n, attr.Key, attr.Val, true) {
 					numAttrsInNode++
@@ -116,14 +134,21 @@ func LookForANode(n, o *html.Node) (*html.Node, error) {
 			}
 			if numAttrsInNode == len(o.Attr) {
 				b = n
+				if stopAtFirstMatch {
+					stop = true
+					return
+				}
 			}
 		}
 		// Loop over the siblings
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			seekFunc(c)
+			seekFunc(c, stopAtFirstMatch)
+			if stop {
+				return
+			}
 		}
 	}
-	seekFunc(n)
+	seekFunc(n, true)
 	if b != nil {
 		return b, nil
 	}
@@ -139,11 +164,16 @@ func getLyrics(doc *html.Node) (string, error) {
 
 	// Look for the <p> tag inside the div
 	for actual != nil {
-		if actual.Type == html.ElementNode && actual.Data == "p" {
+		if (actual.Type == html.ElementNode && actual.Data == "p") ||
+			(actual.Data == "div" &&
+				hasAttr(actual, "class", "SongPageGrid-sc-1vi6xda-0 DGVcp Lyrics__Root-sc-1ynbvzw-0 jvlKWy", true)) {
 			paragraph = actual
 			break
 		}
 		actual = actual.NextSibling
+	}
+	if actual == nil {
+		handleErr("Lyrics node was not found")
 	}
 
 	// Actual is now the first child of the paragraph
@@ -152,7 +182,7 @@ func getLyrics(doc *html.Node) (string, error) {
 	// Getting the Lyrics
 	lyrics := getTextOfNodes(actual)
 
-	return string(lyrics), nil
+	return (lyrics), nil
 }
 
 // Get all the text within a Node
@@ -169,13 +199,18 @@ func getTextOfNodes(n *html.Node) string {
 
 		// If the node is pure text
 		if n.Type == html.TextNode {
-			str = str + n.Data
+			str = str + strings.Replace(n.Data, "\n", "", -1)
 			continue
 		}
 
 		// If the node is an html tag, different from <br>
 		if n.Type == html.ElementNode && n.Data != "br" {
 			str = str + getTextOfNodes(n.FirstChild)
+		}
+
+		// Add line break
+		if n.Data == "br" {
+			str = str + "\n"
 		}
 	}
 
@@ -192,7 +227,7 @@ func renderNode(n *html.Node) bytes.Buffer {
 
 // Looks for an attribute of a node
 // Returns true if the node has the attr
-// CheckForVal is a flag to wether or not checj the value of an attr
+// CheckForVal is a flag to wether or not check the value of an attr
 func hasAttr(n *html.Node, key, val string, checkForVal bool) bool {
 	for _, a := range n.Attr {
 		if a.Key == key {
@@ -215,7 +250,7 @@ func hasAttrWithVal(n *html.Node, attr, val string) bool {
 	return false
 }
 
-func hadleErr(text string, args ...interface{}) {
+func handleErr(text string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, text+"\n", args...)
 	os.Exit(1)
 }
