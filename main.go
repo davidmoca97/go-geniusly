@@ -118,10 +118,11 @@ func main() {
 func LookForANode(n, o *html.Node) (*html.Node, error) {
 	// Node to return
 	var b *html.Node
-	var seekFunc func(*html.Node, bool) bool
+	var stop bool
+	var seekFunc func(*html.Node, bool)
 
 	// Func that looks for the node
-	seekFunc = func(n *html.Node, stopAtFirstMatch bool) (found bool) {
+	seekFunc = func(n *html.Node, stopAtFirstMatch bool) {
 		// If the current node equals with both data and type
 		if n.Data == o.Data && n.Type == o.Type {
 			var numAttrsInNode int
@@ -133,16 +134,19 @@ func LookForANode(n, o *html.Node) (*html.Node, error) {
 			}
 			if numAttrsInNode == len(o.Attr) {
 				b = n
-				return true
+				if stopAtFirstMatch {
+					stop = true
+					return
+				}
 			}
 		}
 		// Loop over the siblings
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			if seekFunc(c, stopAtFirstMatch) && stopAtFirstMatch {
-				return true
+			seekFunc(c, stopAtFirstMatch)
+			if stop {
+				return
 			}
 		}
-		return false
 	}
 	seekFunc(n, true)
 	if b != nil {
