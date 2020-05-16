@@ -13,9 +13,10 @@ go-geniusly -u urlOfTheGeniusPage
 ```
 
 #### Flags
-| flag   | description                                     |   |   |   |
-|--------|-------------------------------------------------|---|---|---|
-| url    | URL of the lyrics of the song on genius.com     |   |   |   |
-| output | Path of the file where the lyrics will be saved |   |   |   |
-| help   | Help! 😰                                         |   |   |   |
+| flag   | description                                     |
+|--------|-------------------------------------------------|
+| url    | URL of the lyrics of the song on genius.com     |
+| output | Path of the file where the lyrics will be saved |
+| help   | Help! 😰                                         |
+
 
