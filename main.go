@@ -166,7 +166,7 @@ func getLyrics(doc *html.Node) (string, error) {
 	for actual != nil {
 		if (actual.Type == html.ElementNode && actual.Data == "p") ||
 			(actual.Data == "div" &&
-				hasAttr(actual, "class", "SongPageGrid-sc-1vi6xda-0 DGVcp Lyrics__Root-sc-1ynbvzw-0 jvlKWy", true)) {
+				htmlAttrContainsValue(actual, "class", "Lyrics__Root")) {
 			paragraph = actual
 			break
 		}
@@ -232,6 +232,17 @@ func hasAttr(n *html.Node, key, val string, checkForVal bool) bool {
 	for _, a := range n.Attr {
 		if a.Key == key {
 			if (checkForVal && a.Val == val) || !checkForVal {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func htmlAttrContainsValue(n *html.Node, key, val string) bool {
+	for _, a := range n.Attr {
+		if a.Key == key {
+			if strings.Contains(a.Val, val) {
 				return true
 			}
 		}
